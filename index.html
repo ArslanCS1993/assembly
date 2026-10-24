@@ -141,7 +141,7 @@ textarea:focus{background:#111}
   </div>
 </header>
 
-<div class="grid">
+<div class="grid" style="grid-template-columns:1fr">
   <!-- LEFT: Editor + Registers -->
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="card">
@@ -162,23 +162,6 @@ hlt</textarea>
     <div class="card">
       <h2>Registers <em>64-bit · Green=changed this step</em></h2>
       <div class="regs" id="regs"></div>
-    </div>
-  </div>
-
-  <!-- RIGHT: Instruction Visual + Log -->
-  <div style="display:flex;flex-direction:column;gap:16px">
-    <div class="card">
-      <h2>Current Instruction <em>Left arrow = data flow (dst ← src)</em></h2>
-      <div class="inst-visual" id="instVisual">
-        <div style="color:var(--dim);text-align:center;padding:20px">Assemble a program to begin</div>
-      </div>
-      <h2 style="margin-top:8px">State Changes (Before → After)</h2>
-      <div class="ba-grid" id="baGrid"></div>
-    </div>
-
-    <div class="card">
-      <h2>Execution Log</h2>
-      <div class="log" id="log"></div>
     </div>
   </div>
 </div>
