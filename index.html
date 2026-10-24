@@ -122,9 +122,6 @@ textarea:focus{background:#111}
 .le .detail{color:var(--dim);font-size:11px;line-height:1.5}
 
 /* Examples */
-.examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.ex-btn{font-size:11px;padding:6px 10px;background:#1a1a1a;border:1px solid var(--border);border-radius:4px;color:var(--dim);cursor:pointer}
-.ex-btn:hover{border-color:var(--blue);color:var(--blue)}
 </style>
 </head>
 <body>
@@ -151,7 +148,12 @@ textarea:focus{background:#111}
       <h2>Program <em id="asmStat"></em></h2>
       <textarea id="code" spellcheck="false" placeholder="Write x86-64 assembly (NASM syntax)..."></textarea>
       <div class="msg" id="asmMsg"></div>
-      <div class="examples" id="examples"></div>
+      <div style="margin-top:8px">
+        <label style="font-size:11px;color:var(--dim);margin-right:8px">Example:</label>
+        <select id="exampleSel" style="padding:6px 10px;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:4px;font:inherit">
+          <option value="">— Choose example —</option>
+        </select>
+      </div>
     </div>
 
     <div class="card">
@@ -832,14 +834,14 @@ function stepInstruction(){
 /* =========================================================================
    UI
    ========================================================================= */
-const exDiv=document.getElementById("examples");
+const exSel=document.getElementById("exampleSel");
 for(const [name,code] of Object.entries(examples)){
-  const btn=document.createElement("button");
-  btn.className="ex-btn";
-  btn.textContent=name;
-  btn.onclick=()=>{document.getElementById("code").value=code;};
-  exDiv.appendChild(btn);
+  const opt=document.createElement("option");
+  opt.value=name;
+  opt.textContent=name;
+  exSel.appendChild(opt);
 }
+exSel.onchange=()=>{if(exSel.value)document.getElementById("code").value=examples[exSel.value];};
 
 document.getElementById("btnAsm").onclick=()=>{
   try{
