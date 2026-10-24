@@ -141,28 +141,25 @@ textarea:focus{background:#111}
   </div>
 </header>
 
-<div class="grid" style="grid-template-columns:1fr">
-  <!-- LEFT: Editor + Registers -->
-  <div style="display:flex;flex-direction:column;gap:16px">
-    <div class="card">
-      <h2>Program <em id="asmStat"></em></h2>
-      <textarea id="code" spellcheck="false">mov rax, 0x123456789ABCDEF0
+<div class="grid" style="grid-template-columns:1fr 1fr">
+  <div class="card">
+    <h2>Program <em id="asmStat"></em></h2>
+    <textarea id="code" spellcheck="false">mov rax, 0x123456789ABCDEF0
 mov rbx, rax
 add rax, rbx
 hlt</textarea>
-      <div class="msg" id="asmMsg"></div>
-      <div style="margin-top:8px">
-        <label style="font-size:11px;color:var(--dim);margin-right:8px">Example:</label>
-        <select id="exampleSel" style="padding:6px 10px;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:4px;font:inherit">
-          <option value="">— Choose example —</option>
-        </select>
-      </div>
+    <div class="msg" id="asmMsg"></div>
+    <div style="margin-top:8px">
+      <label style="font-size:11px;color:var(--dim);margin-right:8px">Example:</label>
+      <select id="exampleSel" style="padding:6px 10px;background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:4px;font:inherit">
+        <option value="">— Choose example —</option>
+      </select>
     </div>
+  </div>
 
-    <div class="card">
-      <h2>Registers <em>64-bit · Green=changed this step</em></h2>
-      <div class="regs" id="regs"></div>
-    </div>
+  <div class="card">
+    <h2>Registers <em>64-bit · Green=changed this step</em></h2>
+    <div class="regs" id="regs"></div>
   </div>
 </div>
 
