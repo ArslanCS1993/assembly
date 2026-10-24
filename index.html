@@ -771,17 +771,11 @@ function renderBeforeAfter(){
 }
 
 function addLog(type, hd, detail){
-  const log=document.getElementById("log");
-  const le=document.createElement("div");
-  le.className=`le ${type}`;
-  le.innerHTML=`<div class="hd">${hd}</div><div class="detail">${detail}</div>`;
-  log.insertBefore(le, log.firstChild);
+  // log removed
 }
 
 function render(){
   renderRegs();
-  renderInstruction();
-  renderBeforeAfter();
 }
 
 /* =========================================================================
@@ -831,15 +825,6 @@ function stepInstruction(){
 /* =========================================================================
    UI
    ========================================================================= */
-const exSel=document.getElementById("exampleSel");
-for(const [name,code] of Object.entries(examples)){
-  const opt=document.createElement("option");
-  opt.value=name;
-  opt.textContent=name;
-  exSel.appendChild(opt);
-}
-exSel.onchange=()=>{if(exSel.value)document.getElementById("code").value=examples[exSel.value];};
-
 document.getElementById("btnAsm").onclick=()=>{
   try{
     const {bytes,entry}=assemble(document.getElementById("code").value);
@@ -856,7 +841,6 @@ document.getElementById("btnAsm").onclick=()=>{
     S.lastMemRead=S.lastMemWrite=null;
     document.getElementById("asmMsg").innerHTML='<div class="msg ok">Assembled '+bytes.length+' bytes. Entry: '+h64(entry)+'</div>';
     document.getElementById("asmStat").textContent=bytes.length+' bytes';
-    document.getElementById("log").innerHTML='';
     stepCycle(); // fetch first
     render();
   }catch(e){
@@ -871,7 +855,6 @@ document.getElementById("btnReset").onclick=()=>{
   S.code=new Uint8Array(); S.pc=0; S.reg.fill(0n); S.prevReg.fill(0n); S.mem.fill(0);
   S.flags={ZF:0,CF:0,SF:0,OF:0}; S.cycle=0; S.running=false; S.halted=false;
   S.currentInstr=null; S.lastMemRead=S.lastMemWrite=null;
-  document.getElementById("log").innerHTML='';
   render();
 };
 
