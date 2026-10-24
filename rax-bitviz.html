@@ -82,7 +82,7 @@ const input = document.getElementById('valInput');
 function render(val){
   const u64 = BigInt(val) & 0xFFFFFFFFFFFFFFFFn;
   const bits = u64.toString(2).padStart(64, '0'); // bit63 ... bit0
-  const highest = bits.lastIndexOf('1'); // index from left (0=bit63)
+  const highest = bits.indexOf('1'); // FIRST '1' from left = MSB position (0=bit63, 63=bit0)
   
   let html = '';
   for(let i=0;i<64;i++){
@@ -94,10 +94,11 @@ function render(val){
     if(bitPos === 63) label = '<span class="label">[63</span>';
     if(bitPos === 0) label = '<span class="label">0]</span>';
     
-    // Green: bitPos <= highestSetBit (occupied width)
-    // Red: bitPos > highestSetBit (unused)
+    // Green: bitPos <= msbPos (occupied width from bit 0 to highest set bit)
+    // Red: bitPos > msbPos (unused)
     // Special: all zeros -> highest = -1, all red
-    if(highest >= 0 && bitPos <= (63 - highest)){
+    const msbPos = highest >= 0 ? 63 - highest : -1;
+    if(msbPos >= 0 && bitPos <= msbPos){
       cls += ' used';
     }else{
       cls += ' unused';
