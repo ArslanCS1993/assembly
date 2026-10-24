@@ -94,7 +94,10 @@ function render(val){
     if(bitPos === 63) label = '<span class="label">[63</span>';
     if(bitPos === 0) label = '<span class="label">0]</span>';
     
-    if(bit === '1'){
+    // Green: bitPos <= highestSetBit (occupied width)
+    // Red: bitPos > highestSetBit (unused)
+    // Special: all zeros -> highest = -1, all red
+    if(highest >= 0 && bitPos <= (63 - highest)){
       cls += ' used';
     }else{
       cls += ' unused';
