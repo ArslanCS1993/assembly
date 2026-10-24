@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+title>Assembly Visual Language — MOV with Before/After</title>
+<style>
+:root{
+  --bg:#0a0a0a; --fg:#e8e8e8; --dim:#666;
+  --green:#00cc44; --blue:#4488ff; --amber:#ffaa00; --red:#cc3333;
+  --panel:#141414; --border:#2a2a2a;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font:14px/1.6 var(--mono);
+  min-height:100vh; padding:32px 20px; max-width:1200px; margin:0 auto;
+}
+h1{font-size:13px;text-transform:uppercase;letter-spacing:.15em;color:var(--dim);font-weight:400;margin-bottom:24px}
+h2{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:12px;font-weight:400}
+.section{margin-bottom:40px}
+.instruction-row{
+  display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+  background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px 20px;
+  margin-bottom:16px
+}
+.inst-label{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--blue);min-width:80px}
+.inst-syntax{
+  flex:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font-size:15px;font-family:var(--mono)
+}
+.inst-syntax .inst{color:var(--blue)}
+.inst-syntax .dst{color:var(--green)}
+.inst-syntax .src{color:var(--amber)}
+.inst-syntax .arrow{color:var(--blue);font-size:20px;font-weight:700}
+.inst-syntax .comma{color:var(--dim)}
+
+/* Before/After panels */
+.state-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.state-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:8px;overflow:hidden
+}
+.state-card.changed{border-color:var(--green);box-shadow:0 0 0 1px var(--green) inset}
+.state-card .header{
+  display:flex;justify-content:space-between;align-items:center;
+  background:#1a1a1a;border-bottom:1px solid var(--border);padding:10px 14px
+}
+.state-card .name{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim)}
+.state-card .badge{
+  font-size:10px;padding:2px 8px;border-radius:4px;background:var(--green);color:#051006;font-weight:700
+}
+.state-card .badge.unchanged{background:var(--dim);color:#2a2a2a}
+.state-card .body{padding:16px}
+.state-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a}
+.state-row:last-child{border-bottom:none}
+.state-row .label{color:var(--dim);font-size:13px}
+.state-row .value{font-family:var(--mono);font-size:14px;font-weight:600}
+.state-row .value.hex{color:var(--fg)}
+.state-row .value.bin{color:var(--green);font-size:12px;letter-spacing:.5px}
+.state-row .value.changed{color:var(--green)}
+.state-row .value.unchanged{color:var(--dim)}
+.arrow-between{text-align:center;color:var(--blue);font-size:24px;padding:8px 0}
+
+/* Bit visualization mini */
+.mini-bits{font-size:11px;line-height:1.4;letter-spacing:.3px;font-family:var(--mono);margin-top:8px}
+.mini-bits .bit{display:inline-block;width:1.05ch}
+.mini-bits .bit.used{color:var(--green)}
+.mini-bits .bit.unused{color:var(--red)}
+.mini-bits .bit.marker{color:var(--amber);font-weight:700}
+.mini-bits .bit.zero{color:#2a2a2a}
+.mini-bits .label{color:var(--dim);font-size:9px}
+
+.controls{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+button{
+  background:#1a1a1a;color:var(--fg);border:1px solid var(--border);border-radius:6px;
+  padding:10px 18px;font:inherit;cursor:pointer;transition:all .15s
+}
+button:hover{border-color:var(--green);color:var(--green)}
+button.active{border-color:var(--green);color:var(--green);background:#0a1a0a}
+</style>
+</head>
+<body>
+
+<h1>Visual Language — MOV with Before/After State</h1>
+
+<div class="controls">
+  <button class="active" data-example="reg-reg">Register → Register</button>
+  <button data-example="imm-reg">Immediate → Register</button>
+  <button data-example="mem-reg">Memory → Register</button>
+  <button data-example="reg-mem">Register → Memory</button>
+</div>
+
+<!-- Instruction Syntax -->
+<div class="section">
+  <h2>Instruction Syntax (left-facing arrow = data flow)</h2>
+  <div class="instruction-row" id="instRow">
+    <span class="inst-label">mov</span>
+    <div class="inst-syntax">
+      <span class="inst">mov</span>
+      <span class="dst" id="dstEl">rax</span>
+      <span class="arrow">←</span>
+      <span class="src" id="srcEl">rbx</span>
+    </div>
+  </div>
+</div>
+
+<!-- Before/After State -->
+<div class="section">
+  <h2>State Changes (Before → After)</h2>
+  <div class="state-grid" id="stateGrid"></div>
+</div>
+
+<!-- Explanation -->
+<div class="section">
+  <h2>Visual Language Rules</h2>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px">
+      <h3 style="color:var(--blue);font-size:12px;margin-bottom:8px">Arrow Direction</h3>
+      <div style="font-size:13px;line-height:1.8;color:var(--fg)">
+        <code>mov dst, src</code> → <code>dst ← src</code><br>
+        Data flows <b>right to left</b> (source → destination)
+      </div>
+    </div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px">
+      <h3 style="color:var(--green);font-size:12px;margin-bottom:8px">Before/After Panels</h3>
+      <div style="font-size:13px;line-height:1.8;color:var(--fg)">
+        Each affected operand gets a card:<br>
+        • <span style="color:var(--green)">Green border</span> = changed<br>
+        • <span style="color:var(--dim)">Gray border</span> = unchanged<br>
+        • Shows hex + binary + bit-width
+      </div>
+    </div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:16px">
+      <h3 style="color:var(--amber);font-size:12px;margin-bottom:8px">Memory Representation</h3>
+      <div style="font-size:13px;line-height:1.8;color:var(--fg)">
+        Memory shown as address + 8-byte value<br>
+        <code>[0x1000] = 0x0000000000000042</code><br>
+        Bit bar shows occupied width
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const examples = {
+  "reg-reg": {
+    inst: "mov rax, rbx",
+    dst: "rax", src: "rbx",
+    before: {
+      rax: 0x0000000000000000n,
+      rbx: 0x123456789ABCDEF0n
+    },
+    after: {
+      rax: 0x123456789ABCDEF0n,
+      rbx: 0x123456789ABCDEF0n
+    }
+  },
+  "imm-reg": {
+    inst: "mov rax, 0xFF",
+    dst: "rax", src: "0xFF",
+    before: { rax: 0x0000000000000000n },
+    after: { rax: 0xFFn }
+  },
+  "mem-reg": {
+    inst: "mov rax, [0x1000]",
+    dst: "rax", src: "[0x1000]",
+    before: {
+      rax: 0x0000000000000000n,
+      "[0x1000]": 0xDEADBEEFCAFEBABEn
+    },
+    after: {
+      rax: 0xDEADBEEFCAFEBABEn,
+      "[0x1000]": 0xDEADBEEFCAFEBABEn
+    }
+  },
+  "reg-mem": {
+    inst: "mov [0x1000], rax",
+    dst: "[0x1000]", src: "rax",
+    before: {
+      rax: 0x1122334455667788n,
+      "[0x1000]": 0x0000000000000000n
+    },
+    after: {
+      rax: 0x1122334455667788n,
+      "[0x1000]": 0x1122334455667788n
+    }
+  }
+};
+
+function h64(n){ return '0x' + (n & 0xFFFFFFFFFFFFFFFFn).toString(16).padStart(16,'0'); }
+function b64(n){ return (n & 0xFFFFFFFFFFFFFFFFn).toString(2).padStart(64,'0'); }
+function bitbar(val){
+  const bits = b64(val);
+  const highest = bits.indexOf('1');
+  const msbPos = highest >= 0 ? 63 - highest : -1;
+  let html = '';
+  for(let i=0;i<64;i++){
+    const bitPos = 63 - i;
+    const bit = bits[i];
+    let cls = 'bit';
+    if(bitPos === 63) html += '<span class="label">[63</span>';
+    if(bitPos === 0) html += '<span class="label">0]</span>';
+    if(msbPos >= 0 && bitPos <= msbPos) cls += ' used';
+    else if(bit === '1') cls += ' used';
+    else cls += ' zero';
+    if(bitPos === 32) cls += ' marker';
+    html += `<span class="${cls}">${bit}</span>`;
+    if(bitPos % 8 === 0 && bitPos !== 0 && bitPos !== 63) html += '<span class="label"> </span>';
+  }
+  return html;
+}
+
+function renderCard(name, beforeVal, afterVal){
+  const changed = beforeVal !== afterVal;
+  const isMem = name.startsWith('[');
+  return `
+    <div class="state-card${changed?' changed':''}">
+      <div class="header">
+        <span class="name">${name}</span>
+        <span class="badge${changed?'':' unchanged'}">${changed?'CHANGED':'SAME'}</span>
+      </div>
+      <div class="body">
+        <div class="state-row">
+          <span class="label">Before</span>
+          <span class="value hex${changed?' changed':' unchanged'}">${h64(beforeVal)}</span>
+        </div>
+        <div class="state-row">
+          <span class="label">After</span>
+          <span class="value hex${changed?' changed':' unchanged'}">${h64(afterVal)}</span>
+        </div>
+        <div class="state-row">
+          <span class="label">Binary</span>
+          <span class="value bin">${bitbar(afterVal)}</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function loadExample(key){
+  const ex = examples[key];
+  document.getElementById('dstEl').textContent = ex.dst;
+  document.getElementById('srcEl').textContent = ex.src;
+  
+  const grid = document.getElementById('stateGrid');
+  grid.innerHTML = '';
+  
+  const allKeys = new Set([...Object.keys(ex.before), ...Object.keys(ex.after)]);
+  for(const k of allKeys){
+    const before = ex.before[k] ?? 0n;
+    const after = ex.after[k] ?? 0n;
+    grid.innerHTML += renderCard(k, before, after);
+  }
+}
+
+document.querySelectorAll('.controls button').forEach(btn=>{
+  btn.onclick = () => {
+    document.querySelectorAll('.controls button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    loadExample(btn.dataset.example);
+  };
+});
+
+loadExample('reg-reg');
+</script>
+</body>
+</html>
