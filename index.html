@@ -146,7 +146,10 @@ textarea:focus{background:#111}
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="card">
       <h2>Program <em id="asmStat"></em></h2>
-      <textarea id="code" spellcheck="false" placeholder="Write x86-64 assembly (NASM syntax)..."></textarea>
+      <textarea id="code" spellcheck="false">mov rax, 0x123456789ABCDEF0
+mov rbx, rax
+add rax, rbx
+hlt</textarea>
       <div class="msg" id="asmMsg"></div>
       <div style="margin-top:8px">
         <label style="font-size:11px;color:var(--dim);margin-right:8px">Example:</label>
@@ -541,7 +544,7 @@ function decodeInstr(pc){
     let addr=0;
     for(let i=0;i<4;i++) addr|=S.code[pc+3+i]<<(8*i);
     return {mne:"MOV",dst:REGS[dst],src:`[${h64(addr)}]`,len:10,type:"mem-reg",addr,
-      exec:(){let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[addr+i])<<BigInt(8*i);S.reg[dst]=v;S.lastMemRead=addr;}};
+      exec(){let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[addr+i])<<BigInt(8*i);S.reg[dst]=v;S.lastMemRead=addr;}};
   }
   // MOV [mem], R64 (REX.W 89 05 disp32)
   if(op===0x48 && pc+9<S.code.length && S.code[pc+1]===0x89 && (S.code[pc+2]&0xC7)===0x05){
@@ -549,7 +552,7 @@ function decodeInstr(pc){
     let addr=0;
     for(let i=0;i<4;i++) addr|=S.code[pc+3+i]<<(8*i);
     return {mne:"MOV",dst:`[${h64(addr)}]`,src:REGS[src],len:10,type:"reg-mem",addr,
-      exec:(){const v=S.reg[src];for(let i=0;i<8;i++)S.mem[addr+i]=Number((v>>BigInt(8*i))&0xFFn);S.lastMemWrite=addr;}};
+      exec(){const v=S.reg[src];for(let i=0;i<8;i++)S.mem[addr+i]=Number((v>>BigInt(8*i))&0xFFn);S.lastMemWrite=addr;}};
   }
   // ADD R64, R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x01){
@@ -557,7 +560,7 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"ADD",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
-      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a+b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a>0xFFFFFFFFFFFFFFFFn-b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a+b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a>0xFFFFFFFFFFFFFFFFn-b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // SUB R64, R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x29){
@@ -565,7 +568,7 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"SUB",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
-      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a-b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a-b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // XOR R64, R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x31){
@@ -573,7 +576,7 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"XOR",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
-      exec:(){S.reg[dst]=S.reg[dst]^S.reg[src];S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){S.reg[dst]=S.reg[dst]^S.reg[src];S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // CMP R64, R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x39){
@@ -581,100 +584,100 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"CMP",dst:REGS[dst],src:REGS[src],len:3,type:"cmp",
-      exec:(){const a=S.reg[dst],b=S.reg[src];const r=a-b;S.flags.ZF=r===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(r>>63n)&1n;S.flags.OF=((a^b)&(a^r)&0x8000000000000000n)!==0n?1:0;}};
+      exec(){const a=S.reg[dst],b=S.reg[src];const r=a-b;S.flags.ZF=r===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(r>>63n)&1n;S.flags.OF=((a^b)&(a^r)&0x8000000000000000n)!==0n?1:0;}};
   }
   // INC R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0xFF && (S.code[pc+2]&0xF8)===0xC0){
     const dst=S.code[pc+2]&7|((op&1)<<3);
     return {mne:"INC",dst:REGS[dst],src:"1",len:3,type:"reg-imm",
-      exec:(){S.reg[dst]++;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){S.reg[dst]++;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // DEC R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0xFF && (S.code[pc+2]&0xF8)===0xC8){
     const dst=S.code[pc+2]&7|((op&1)<<3);
     return {mne:"DEC",dst:REGS[dst],src:"1",len:3,type:"reg-imm",
-      exec:(){S.reg[dst]--;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){S.reg[dst]--;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // SHL R64, imm8
   if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xE0){
     const dst=S.code[pc+2]&7|((op&1)<<3);
     const imm=S.code[pc+3];
     return {mne:"SHL",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
-      exec:(){S.reg[dst]=S.reg[dst]<<BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){S.reg[dst]=S.reg[dst]<<BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // SHR R64, imm8
   if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xE8){
     const dst=S.code[pc+2]&7|((op&1)<<3);
     const imm=S.code[pc+3];
     return {mne:"SHR",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
-      exec:(){S.reg[dst]=S.reg[dst]>>BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=0;}};
+      exec(){S.reg[dst]=S.reg[dst]>>BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=0;}};
   }
   // SAR R64, imm8
   if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xF8){
     const dst=S.code[pc+2]&7|((op&1)<<3);
     const imm=S.code[pc+3];
     return {mne:"SAR",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
-      exec:(){const val=S.reg[dst];const sign=val>>63n;S.reg[dst]=val>>BigInt(imm)|(sign<<(64n-BigInt(imm)));S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(val>>(BigInt(imm)-1n))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec(){const val=S.reg[dst];const sign=val>>63n;S.reg[dst]=val>>BigInt(imm)|(sign<<(64n-BigInt(imm)));S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(val>>(BigInt(imm)-1n))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // JMP rel32
   if(op===0xE9){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+1+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"JMP",dst:`+${rel}`,src:"",len:5,type:"jump",
-      exec:(){S.pc=pc+5+rel;}};
+      exec(){S.pc=pc+5+rel;}};
   }
   // JL rel32 (0F 8C) - jump if less (SF != OF)
   if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x8C){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+2+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"JL",dst:`+${rel}`,src:"SF!=OF",len:6,type:"jcc",
-      exec:(){if(S.flags.SF!==S.flags.OF)S.pc=pc+6+rel;}};
+      exec(){if(S.flags.SF!==S.flags.OF)S.pc=pc+6+rel;}};
   }
   // JG rel32 (0F 8F) - jump if greater (ZF=0 and SF=OF)
   if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x8F){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+2+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"JG",dst:`+${rel}`,src:"ZF=0,SF=OF",len:6,type:"jcc",
-      exec:(){if(S.flags.ZF===0 && S.flags.SF===S.flags.OF)S.pc=pc+6+rel;}};
+      exec(){if(S.flags.ZF===0 && S.flags.SF===S.flags.OF)S.pc=pc+6+rel;}};
   }
   // JNZ rel32 (0F 85)
   if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x85){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+2+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"JNZ",dst:`+${rel}`,src:"ZF=0",len:6,type:"jcc",
-      exec:(){if(S.flags.ZF===0)S.pc=pc+6+rel;}};
+      exec(){if(S.flags.ZF===0)S.pc=pc+6+rel;}};
   }
   // CALL rel32
   if(op===0xE8){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+1+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"CALL",dst:`+${rel}`,src:"",len:5,type:"call",
-      exec:(){const ret=pc+5;const rsp=Number(S.reg[7])-8;S.reg[7]=BigInt(rsp);for(let i=0;i<8;i++)S.mem[rsp+i]=Number((BigInt(ret)>>BigInt(8*i))&0xFFn);S.pc=pc+5+rel;}};
+      exec(){const ret=pc+5;const rsp=Number(S.reg[7])-8;S.reg[7]=BigInt(rsp);for(let i=0;i<8;i++)S.mem[rsp+i]=Number((BigInt(ret)>>BigInt(8*i))&0xFFn);S.pc=pc+5+rel;}};
   }
   // RET
   if(op===0xC3){
     return {mne:"RET",dst:"",src:"",len:1,type:"ret",
-      exec:(){const rsp=Number(S.reg[7]);let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[rsp+i])<<BigInt(8*i);S.reg[7]=BigInt(rsp+8);S.pc=v;}};
+      exec(){const rsp=Number(S.reg[7]);let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[rsp+i])<<BigInt(8*i);S.reg[7]=BigInt(rsp+8);S.pc=v;}};
   }
   // PUSH R64
   if((op&0xF8)===0x50 && (op&7)<16){
     const dst=op&7;
     return {mne:"PUSH",dst:REGS[dst],src:"",len:1,type:"push",
-      exec:(){const rsp=Number(S.reg[7])-8;S.reg[7]=BigInt(rsp);const v=S.reg[dst];for(let i=0;i<8;i++)S.mem[rsp+i]=Number((v>>BigInt(8*i))&0xFFn);S.lastMemWrite=rsp;}};
+      exec(){const rsp=Number(S.reg[7])-8;S.reg[7]=BigInt(rsp);const v=S.reg[dst];for(let i=0;i<8;i++)S.mem[rsp+i]=Number((v>>BigInt(8*i))&0xFFn);S.lastMemWrite=rsp;}};
   }
   // POP R64
   if((op&0xF8)===0x58 && (op&7)<16){
     const dst=op&7;
     return {mne:"POP",dst:REGS[dst],src:"",len:1,type:"pop",
-      exec:(){const rsp=Number(S.reg[7]);let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[rsp+i])<<BigInt(8*i);S.reg[dst]=v;S.reg[7]=BigInt(rsp+8);S.lastMemRead=rsp;}};
+      exec(){const rsp=Number(S.reg[7]);let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[rsp+i])<<BigInt(8*i);S.reg[dst]=v;S.reg[7]=BigInt(rsp+8);S.lastMemRead=rsp;}};
   }
   // MUL R64 (REX.W F7 /4) - unsigned multiply RAX *= reg, result in RDX:RAX
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0xF7 && (S.code[pc+2]&0xF8)===0xE0){
     const src=S.code[pc+2]&7|((op&1)<<3);
     return {mne:"MUL",dst:"RDX:RAX",src:REGS[src],len:3,type:"mul",
-      exec:(){const a=S.reg[0];const b=S.reg[src];const prod=a*b;S.reg[0]=prod&0xFFFFFFFFFFFFFFFFn;S.reg[2]=(prod>>64n)&0xFFFFFFFFFFFFFFFFn;S.flags.ZF=S.reg[0]===0n?1:0;S.flags.CF=S.reg[2]!==0n?1:0;}};
+      exec(){const a=S.reg[0];const b=S.reg[src];const prod=a*b;S.reg[0]=prod&0xFFFFFFFFFFFFFFFFn;S.reg[2]=(prod>>64n)&0xFFFFFFFFFFFFFFFFn;S.flags.ZF=S.reg[0]===0n?1:0;S.flags.CF=S.reg[2]!==0n?1:0;}};
   }
   // NOP
-  if(op===0x90) return {mne:"NOP",dst:"",src:"",len:1,type:"nop",exec:(){}};
+  if(op===0x90) return {mne:"NOP",dst:"",src:"",len:1,type:"nop",exec(){}};
   // HLT
-  if(op===0xF4) return {mne:"HLT",dst:"",src:"",len:1,type:"halt",exec:(){S.halted=true;}};
+  if(op===0xF4) return {mne:"HLT",dst:"",src:"",len:1,type:"halt",exec(){S.halted=true;}};
   
-  return {mne:"???",dst:"",src:"",len:1,type:"unknown",exec:(){}};
+  return {mne:"???",dst:"",src:"",len:1,type:"unknown",exec(){}};
 }
 
 /* =========================================================================
