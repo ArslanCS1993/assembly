@@ -272,6 +272,20 @@ fact_loop:
 hlt`,
 };
 
+// Populate dropdown immediately after examples is defined
+(function(){
+  const exSel = document.getElementById("exampleSel");
+  if(exSel){
+    for(const [name,code] of Object.entries(examples)){
+      const opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      exSel.appendChild(opt);
+    }
+    exSel.onchange = () => { if(exSel.value) document.getElementById("code").value = examples[exSel.value]; };
+  }
+})();
+
 function assemble(src){
   const lines = src.split("\n").map(l=>l.split(";")[0].trim()).filter(l=>l);
   const labels = {};
