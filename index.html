@@ -222,6 +222,52 @@ push rbx
 pop rax
 pop rbx
 hlt`,
+  "Conditional Jump": `mov rax, 5
+mov rbx, 10
+cmp rax, rbx
+jl less_than
+mov rcx, 1      ; rax >= rbx
+jmp done
+less_than:
+  mov rcx, 2    ; rax < rbx
+done:
+hlt`,
+  "Bit Shifts": `mov rax, 1
+shl rax, 4      ; rax = 16 (1 << 4)
+shl rax, 8      ; rax = 4096 (16 << 8)
+shr rax, 2      ; rax = 1024 (4096 >> 2)
+hlt`,
+  "Array Sum": `mov rsi, array    ; pointer to array
+mov rcx, 5        ; count
+xor rax, rax      ; sum = 0
+sum_loop:
+  add rax, [rsi]
+  add rsi, 8      ; next qword
+  dec rcx
+  jnz sum_loop
+hlt
+array:
+  dq 10, 20, 30, 40, 50`,
+  "Fibonacci": `mov rcx, 10       ; n = 10
+xor rax, rax      ; a = 0
+mov rbx, 1        ; b = 1
+fib_loop:
+  mov rdx, rax
+  add rdx, rbx    ; rdx = a + b
+  mov rax, rbx    ; a = b
+  mov rbx, rdx    ; b = a+b
+  dec rcx
+  jnz fib_loop
+  ; rax = fib(10) = 55
+hlt`,
+  "Factorial": `mov rax, 1        ; result = 1
+mov rcx, 6        ; n = 6
+fact_loop:
+  mul rcx         ; rax *= rcx (unsigned, result in rdx:rax)
+  dec rcx
+  jnz fact_loop
+  ; rax = 720 (6!)
+hlt`,
 };
 
 function assemble(src){
@@ -256,11 +302,13 @@ function assemble(src){
 
 function estimate(line){
   const up = line.toUpperCase().split(/\s+/)[0];
-  if(["MOV","ADD","SUB","AND","OR","XOR","CMP"].includes(up)) return 3; // simplified
+  if(["MOV","ADD","SUB","AND","OR","XOR","CMP"].includes(up)) return 3;
   if(["INC","DEC","PUSH","POP","NOP","HLT","RET"].includes(up)) return 1;
-  if(["JMP","JZ","JNZ","JL","JG","CALL"].includes(up)) return 5;
+  if(["JMP","JZ","JNZ","JL","JG","JLE","JGE","CALL"].includes(up)) return 6;
   if(up==="SHL"||up==="SHR"||up==="SAR") return 3;
-  if(up==="MOV" && line.includes("[")) return 10; // mem
+  if(up==="MUL"||up==="DIV") return 3;
+  if(up==="MOV" && line.includes("[")) return 10;
+  if(up==="DQ"||up==="DQ") return 8; // data
   return 3;
 }
 
@@ -309,6 +357,18 @@ function encode(line, pc, labels){
     const rex = 0x48 | ((dst>>3)<<1) | (src>>3);
     return [rex, 0x29, 0xC0|(src&7)<<3|(dst&7)];
   }
+  // XOR R64, R64
+  if(mne==="XOR" && ops.length===2 && regIdx(ops[0])>=0 && regIdx(ops[1])>=0){
+    const dst = regIdx(ops[0]), src = regIdx(ops[1]);
+    const rex = 0x48 | ((dst>>3)<<1) | (src>>3);
+    return [rex, 0x31, 0xC0|(src&7)<<3|(dst&7)];
+  }
+  // CMP R64, R64
+  if(mne==="CMP" && ops.length===2 && regIdx(ops[0])>=0 && regIdx(ops[1])>=0){
+    const dst = regIdx(ops[0]), src = regIdx(ops[1]);
+    const rex = 0x48 | ((dst>>3)<<1) | (src>>3);
+    return [rex, 0x39, 0xC0|(src&7)<<3|(dst&7)];
+  }
   // INC R64
   if(mne==="INC" && ops.length===1 && regIdx(ops[0])>=0){
     const dst = regIdx(ops[0]);
@@ -319,10 +379,38 @@ function encode(line, pc, labels){
     const dst = regIdx(ops[0]);
     return [0x48|(dst>>3), 0xFF, 0xC8|(dst&7)];
   }
+  // SHL R64, imm8
+  if(mne==="SHL" && ops.length===2 && regIdx(ops[0])>=0 && /^\d+$/.test(ops[1])){
+    const dst = regIdx(ops[0]);
+    const imm = parseInt(ops[1],10);
+    return [0x48|(dst>>3), 0xC1, 0xE0|(dst&7), imm];
+  }
+  // SHR R64, imm8
+  if(mne==="SHR" && ops.length===2 && regIdx(ops[0])>=0 && /^\d+$/.test(ops[1])){
+    const dst = regIdx(ops[0]);
+    const imm = parseInt(ops[1],10);
+    return [0x48|(dst>>3), 0xC1, 0xE8|(dst&7), imm];
+  }
+  // SAR R64, imm8
+  if(mne==="SAR" && ops.length===2 && regIdx(ops[0])>=0 && /^\d+$/.test(ops[1])){
+    const dst = regIdx(ops[0]);
+    const imm = parseInt(ops[1],10);
+    return [0x48|(dst>>3), 0xC1, 0xF8|(dst&7), imm];
+  }
   // JMP label
   if(mne==="JMP" && ops.length===1 && labels[ops[0]]!==undefined){
     const rel = labels[ops[0]] - (pc + 5);
     return [0xE9, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
+  }
+  // JL label (0F 8C)
+  if(mne==="JL" && ops.length===1 && labels[ops[0]]!==undefined){
+    const rel = labels[ops[0]] - (pc + 6);
+    return [0x0F, 0x8C, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
+  }
+  // JG label (0F 8F)
+  if(mne==="JG" && ops.length===1 && labels[ops[0]]!==undefined){
+    const rel = labels[ops[0]] - (pc + 6);
+    return [0x0F, 0x8F, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
   }
   // JNZ label
   if(mne==="JNZ" && ops.length===1 && labels[ops[0]]!==undefined){
@@ -343,6 +431,26 @@ function encode(line, pc, labels){
   // POP R64
   if(mne==="POP" && ops.length===1 && regIdx(ops[0])>=0){
     return [0x58|(regIdx(ops[0])&7)];
+  }
+  // XOR R64, R64 (for zeroing)
+  if(mne==="XOR" && ops.length===2 && ops[0]===ops[1] && regIdx(ops[0])>=0){
+    const dst = regIdx(ops[0]);
+    const rex = 0x48 | ((dst>>3)<<1) | (dst>>3);
+    return [rex, 0x31, 0xC0|(dst&7)<<3|(dst&7)];
+  }
+  // MUL R64 (unsigned multiply: RAX *= reg, result in RDX:RAX)
+  if(mne==="MUL" && ops.length===1 && regIdx(ops[0])>=0){
+    const src = regIdx(ops[0]);
+    return [0x48|(src>>3), 0xF7, 0xE0|(src&7)];
+  }
+  // DQ - define quadword (data)
+  if(mne==="DQ" && ops.length>=1){
+    const bytes = [];
+    for(const op of ops){
+      const val = BigInt(op.startsWith("0x")?op:parseInt(op,10));
+      for(let i=0;i<8;i++) bytes.push(Number((val>>BigInt(8*i))&0xFFn));
+    }
+    return bytes;
   }
   if(mne==="NOP") return [0x90];
   if(mne==="HLT") return [0xF4];
@@ -433,7 +541,7 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"ADD",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
-      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a+b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=a>0xFFFFFFFFFFFFFFFFn-b?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a+b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a>0xFFFFFFFFFFFFFFFFn-b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
   // SUB R64, R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x29){
@@ -441,7 +549,23 @@ function decodeInstr(pc){
     const dst=modrm&7|((op&1)<<3);
     const src=(modrm>>3)&7|((op>>1)&1)<<3;
     return {mne:"SUB",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
-      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a-b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=a<b?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+      exec:(){const a=S.reg[dst],b=S.reg[src];S.reg[dst]=a-b;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+  }
+  // XOR R64, R64
+  if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x31){
+    const modrm=S.code[pc+2];
+    const dst=modrm&7|((op&1)<<3);
+    const src=(modrm>>3)&7|((op>>1)&1)<<3;
+    return {mne:"XOR",dst:REGS[dst],src:REGS[src],len:3,type:"reg-reg",
+      exec:(){S.reg[dst]=S.reg[dst]^S.reg[src];S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+  }
+  // CMP R64, R64
+  if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0x39){
+    const modrm=S.code[pc+2];
+    const dst=modrm&7|((op&1)<<3);
+    const src=(modrm>>3)&7|((op>>1)&1)<<3;
+    return {mne:"CMP",dst:REGS[dst],src:REGS[src],len:3,type:"cmp",
+      exec:(){const a=S.reg[dst],b=S.reg[src];const r=a-b;S.flags.ZF=r===0n?1:0;S.flags.CF=(a<b)?1:0;S.flags.SF=(r>>63n)&1n;S.flags.OF=((a^b)&(a^r)&0x8000000000000000n)!==0n?1:0;}};
   }
   // INC R64
   if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0xFF && (S.code[pc+2]&0xF8)===0xC0){
@@ -455,11 +579,44 @@ function decodeInstr(pc){
     return {mne:"DEC",dst:REGS[dst],src:"1",len:3,type:"reg-imm",
       exec:(){S.reg[dst]--;S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
   }
+  // SHL R64, imm8
+  if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xE0){
+    const dst=S.code[pc+2]&7|((op&1)<<3);
+    const imm=S.code[pc+3];
+    return {mne:"SHL",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
+      exec:(){S.reg[dst]=S.reg[dst]<<BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+  }
+  // SHR R64, imm8
+  if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xE8){
+    const dst=S.code[pc+2]&7|((op&1)<<3);
+    const imm=S.code[pc+3];
+    return {mne:"SHR",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
+      exec:(){S.reg[dst]=S.reg[dst]>>BigInt(imm);S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(S.reg[dst]>>BigInt(imm-1))&1n;S.flags.SF=0;}};
+  }
+  // SAR R64, imm8
+  if(op===0x48 && pc+3<S.code.length && S.code[pc+1]===0xC1 && (S.code[pc+2]&0xF8)===0xF8){
+    const dst=S.code[pc+2]&7|((op&1)<<3);
+    const imm=S.code[pc+3];
+    return {mne:"SAR",dst:REGS[dst],src:imm.toString(),len:4,type:"shift",
+      exec:(){const val=S.reg[dst];const sign=val>>63n;S.reg[dst]=val>>BigInt(imm)|(sign<<(64n-BigInt(imm)));S.flags.ZF=S.reg[dst]===0n?1:0;S.flags.CF=(val>>(BigInt(imm)-1n))&1n;S.flags.SF=(S.reg[dst]>>63n)&1n;}};
+  }
   // JMP rel32
   if(op===0xE9){
     let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+1+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
     return {mne:"JMP",dst:`+${rel}`,src:"",len:5,type:"jump",
       exec:(){S.pc=pc+5+rel;}};
+  }
+  // JL rel32 (0F 8C) - jump if less (SF != OF)
+  if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x8C){
+    let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+2+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
+    return {mne:"JL",dst:`+${rel}`,src:"SF!=OF",len:6,type:"jcc",
+      exec:(){if(S.flags.SF!==S.flags.OF)S.pc=pc+6+rel;}};
+  }
+  // JG rel32 (0F 8F) - jump if greater (ZF=0 and SF=OF)
+  if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x8F){
+    let rel=0;for(let i=0;i<4;i++)rel|=S.code[pc+2+i]<<(8*i);if(rel&0x80000000)rel-=0x100000000;
+    return {mne:"JG",dst:`+${rel}`,src:"ZF=0,SF=OF",len:6,type:"jcc",
+      exec:(){if(S.flags.ZF===0 && S.flags.SF===S.flags.OF)S.pc=pc+6+rel;}};
   }
   // JNZ rel32 (0F 85)
   if(op===0x0F && pc+5<S.code.length && S.code[pc+1]===0x85){
@@ -489,6 +646,12 @@ function decodeInstr(pc){
     const dst=op&7;
     return {mne:"POP",dst:REGS[dst],src:"",len:1,type:"pop",
       exec:(){const rsp=Number(S.reg[7]);let v=0n;for(let i=0;i<8;i++)v|=BigInt(S.mem[rsp+i])<<BigInt(8*i);S.reg[dst]=v;S.reg[7]=BigInt(rsp+8);S.lastMemRead=rsp;}};
+  }
+  // MUL R64 (REX.W F7 /4) - unsigned multiply RAX *= reg, result in RDX:RAX
+  if(op===0x48 && pc+2<S.code.length && S.code[pc+1]===0xF7 && (S.code[pc+2]&0xF8)===0xE0){
+    const src=S.code[pc+2]&7|((op&1)<<3);
+    return {mne:"MUL",dst:"RDX:RAX",src:REGS[src],len:3,type:"mul",
+      exec:(){const a=S.reg[0];const b=S.reg[src];const prod=a*b;S.reg[0]=prod&0xFFFFFFFFFFFFFFFFn;S.reg[2]=(prod>>64n)&0xFFFFFFFFFFFFFFFFn;S.flags.ZF=S.reg[0]===0n?1:0;S.flags.CF=S.reg[2]!==0n?1:0;}};
   }
   // NOP
   if(op===0x90) return {mne:"NOP",dst:"",src:"",len:1,type:"nop",exec:(){}};
