@@ -65,11 +65,12 @@ button:hover{border-color:var(--green);color:var(--green)}
   <div class="reg-name">RAX</div>
   <div class="bitbar" id="bitbar"></div>
   <div class="value-hex">Value: <code id="hexVal">0x0000000000000000</code></div>
+  <div class="value-dec" id="decVal">Decimal: 0</div>
 </div>
 
 <div class="legend">
-  <span><i style="background:var(--green)"></i> Used bits (0 → highest set bit)</span>
-  <span><i style="background:var(--red)"></i> Unused bits</span>
+  <span><i style="background:var(--green)"></i> Bit = 1 (has data)</span>
+  <span><i style="background:var(--red)"></i> Bit = 0 (no data)</span>
   <span><i style="background:var(--amber)"></i> Bit-32 boundary</span>
 </div>
 
@@ -96,14 +97,7 @@ function render(val){
     if(bit === '1'){
       cls += ' used';
     }else{
-      // unused bits: green if below highest set bit, red if above
-      if(highest >= 0 && i > highest){
-        cls += ' unused';
-      }else if(highest >= 0 && i <= highest){
-        cls += ' used'; // zeros between LSB and highest 1 are "used" (part of the value)
-      }else{
-        cls += ' zero'; // all zeros
-      }
+      cls += ' unused';
     }
     
     if(bitPos === 32) cls += ' marker';
@@ -114,6 +108,7 @@ function render(val){
   
   bitbar.innerHTML = html;
   hexVal.textContent = '0x' + u64.toString(16).padStart(16, '0');
+  decVal.textContent = 'Decimal: ' + u64.toString();
 }
 
 function parseInput(s){
