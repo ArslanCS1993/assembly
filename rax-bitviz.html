@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAX Bit Visualization</title>
+<style>
+:root{
+  --bg:#0a0a0a; --fg:#e8e8e8; --dim:#666;
+  --green:#00cc44; --red:#cc3333; --amber:#ffaa00;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font:16px/1.6 var(--mono);
+  min-height:100vh; display:flex; flex-direction:column; align-items:center; padding:40px 20px; gap:24px;
+}
+h1{font-size:14px;text-transform:uppercase;letter-spacing:.15em;color:var(--dim);font-weight:400}
+.controls{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+input[type=number]{
+  background:#111;color:var(--fg);border:1px solid #333;border-radius:6px;
+  padding:10px 14px;font:inherit;width:140px;text-align:right
+}
+button{
+  background:#1a1a1a;color:var(--fg);border:1px solid #333;border-radius:6px;
+  padding:10px 20px;font:inherit;cursor:pointer;transition:all .15s
+}
+button:hover{border-color:var(--green);color:var(--green)}
+.reg-box{
+  background:#111;border:1px solid #222;border-radius:8px;padding:32px 40px;
+  min-width:700px;max-width:90vw
+}
+.reg-name{font-size:13px;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);margin-bottom:16px}
+.bitbar{
+  font-size:14px;line-height:1.8;letter-spacing:.5px;
+  font-variant-numeric:tabular-nums;
+  user-select:none
+}
+.bitbar .bit{display:inline-block;width:1.15ch;text-align:center;transition:color .2s}
+.bitbar .bit.zero{color:#2a2a2a}
+.bitbar .bit.used{color:var(--green)}
+.bitbar .bit.unused{color:var(--red)}
+.bitbar .bit.marker{color:var(--amber);font-weight:700}
+.bitbar .label{color:var(--dim);font-size:11px;margin:0 2px}
+.value-hex{margin-top:16px;font-size:13px;color:var(--dim)}
+.value-hex code{color:var(--fg);font-size:14px}
+.legend{display:flex;gap:24px;margin-top:20px;font-size:12px;color:var(--dim)}
+.legend span{display:flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px}
+</style>
+</head>
+<body>
+
+<h1>RAX Register — Bit Visualization</h1>
+
+<div class="controls">
+  <input type="number" id="valInput" placeholder="Enter value (hex or dec)" value="0" />
+  <button id="btnRandom">Random</button>
+  <button id="btnMax">Max (2⁶⁴-1)</button>
+  <button id="btnClear">Clear (0)</button>
+</div>
+
+<div class="reg-box">
+  <div class="reg-name">RAX</div>
+  <div class="bitbar" id="bitbar"></div>
+  <div class="value-hex">Value: <code id="hexVal">0x0000000000000000</code></div>
+</div>
+
+<div class="legend">
+  <span><i style="background:var(--green)"></i> Used bits (0 → highest set bit)</span>
+  <span><i style="background:var(--red)"></i> Unused bits</span>
+  <span><i style="background:var(--amber)"></i> Bit-32 boundary</span>
+</div>
+
+<script>
+const bitbar = document.getElementById('bitbar');
+const hexVal = document.getElementById('hexVal');
+const input = document.getElementById('valInput');
+
+function render(val){
+  const u64 = BigInt(val) & 0xFFFFFFFFFFFFFFFFn;
+  const bits = u64.toString(2).padStart(64, '0'); // bit63 ... bit0
+  const highest = bits.lastIndexOf('1'); // index from left (0=bit63)
+  
+  let html = '';
+  for(let i=0;i<64;i++){
+    const bitPos = 63 - i; // actual bit position
+    const bit = bits[i];
+    let cls = 'bit';
+    let label = '';
+    
+    if(bitPos === 63) label = '<span class="label">[63</span>';
+    if(bitPos === 0) label = '<span class="label">0]</span>';
+    
+    if(bit === '1'){
+      cls += ' used';
+    }else{
+      // unused bits: green if below highest set bit, red if above
+      if(highest >= 0 && i > highest){
+        cls += ' unused';
+      }else if(highest >= 0 && i <= highest){
+        cls += ' used'; // zeros between LSB and highest 1 are "used" (part of the value)
+      }else{
+        cls += ' zero'; // all zeros
+      }
+    }
+    
+    if(bitPos === 32) cls += ' marker';
+    
+    html += `<span class="${cls}">${bit}${label}</span>`;
+    if(bitPos % 8 === 0 && bitPos !== 0 && bitPos !== 63) html += '<span class="label"> </span>';
+  }
+  
+  bitbar.innerHTML = html;
+  hexVal.textContent = '0x' + u64.toString(16).padStart(16, '0');
+}
+
+function parseInput(s){
+  s = s.trim();
+  if(s.startsWith('0x') || s.startsWith('0X')) return BigInt(s);
+  return BigInt(s);
+}
+
+input.addEventListener('input', e => {
+  try{ render(parseInput(e.target.value)); }catch{/* ignore */}
+});
+
+document.getElementById('btnRandom').onclick = () => {
+  const r = (BigInt(Math.floor(Math.random()*0xFFFFFFFF)) << 32n) | BigInt(Math.floor(Math.random()*0xFFFFFFFF));
+  input.value = '0x' + r.toString(16).padStart(16,'0');
+  render(r);
+};
+
+document.getElementById('btnMax').onclick = () => {
+  const r = 0xFFFFFFFFFFFFFFFFn;
+  input.value = '0x' + r.toString(16).padStart(16,'0');
+  render(r);
+};
+
+document.getElementById('btnClear').onclick = () => {
+  input.value = '0';
+  render(0n);
+};
+
+// Initial
+render(0n);
+</script>
+</body>
+</html>
