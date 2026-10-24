@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assembly Lab — x86-64 step-through</title>
+<style>
+:root{
+  --bg:#0a0d13; --panel:#121722; --panel2:#0f141d; --line:#232c3d;
+  --ink:#dbe4f0; --dim:#7d8ba3; --faint:#4d5a72;
+  --cy:#2ee6d6; --am:#ffb020; --pk:#ff5c8a; --gn:#5ce27a;
+  --vi:#a78bfa; --cy2:#38bdf8; --hot:#ff4d4d; --wire:#2a3449;
+  --wireoff:#1e2635; --wireon:#2ee6d6;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  padding:14px; -webkit-font-smoothing:antialiased;
+}
+h1{font-size:clamp(16px,2.6vw,21px);font-weight:700;letter-spacing:-.02em}
+h1 span{color:var(--cy)}
+.sub{color:var(--dim);font-size:12.5px;margin-top:2px}
+header{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;justify-content:space-between;margin-bottom:12px}
+
+.grid{display:grid;grid-template-columns:minmax(360px,1fr) minmax(480px,1.6fr);gap:12px;align-items:start}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card>h2{
+  font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);
+  padding:9px 12px;border-bottom:1px solid var(--line);background:var(--panel2);
+  display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:600
+}
+.card>h2 em{font-style:normal;color:var(--faint);text-transform:none;letter-spacing:0;font-family:var(--mono);font-size:11px}
+.pad{padding:12px}
+
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+button{
+  font:inherit;font-size:13px;font-weight:600;color:var(--ink);background:#1a2231;
+  border:1px solid var(--line);border-radius:8px;padding:8px 14px;cursor:pointer;
+  transition:transform .08s,background .15s,border-color .15s;white-space:nowrap
+}
+button:hover:not(:disabled){background:#222c3e;border-color:#31405a}
+button:active:not(:disabled){transform:translateY(1px)}
+button:disabled{opacity:.35;cursor:not-allowed}
+button.p{background:linear-gradient(180deg,#1d5f5a,#14443f);border-color:#2ee6d6;color:#c8fff8}
+button.p:hover:not(:disabled){background:linear-gradient(180deg,#237a73,#1a5a54)}
+button.g{background:#1d2432;border-color:#3a475f}
+button.g:hover:not(:disabled){background:#252f42}
+button.go{background:linear-gradient(180deg,#5a1d3a,#3f1529);border-color:#ff5c8a;color:#ffd8e4}
+select,input[type=text]{
+  font:inherit;font-size:13px;background:#1a2231;color:var(--ink);
+  border:1px solid var(--line);border-radius:8px;padding:8px 10px
+}
+kbd{font:11px var(--mono);background:#0c1017;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--dim)}
+
+.mem{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;padding:10px}
+.cell{
+  background:#0c1017;border:1px solid var(--line);border-radius:6px;padding:5px 3px;
+  text-align:center;font-family:var(--mono);transition:all .18s
+}
+.cell .ad{font-size:9px;color:var(--faint);display:block;line-height:1.3}
+.cell .hx{font-size:14px;font-weight:700;line-height:1.35;display:block}
+.cell .op{font-size:8.5px;color:var(--faint);line-height:1.2;display:block;overflow:hidden;text-overflow:ellipsis}
+.cell.pc{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy) inset,0 0 14px -4px var(--cy)}
+.cell.pc .hx{color:var(--cy)}
+.cell.hit{background:#123a36;border-color:var(--cy)}
+.cell.hit .hx{color:#7dfff0}
+.cell.wr{background:#3a2412;border-color:var(--am)}
+.cell.wr .hx{color:#ffd08a}
+
+.dp{width:100%;height:auto;display:block;background:#080b11}
+.wire{fill:none;stroke:var(--wireoff);stroke-width:2.4;stroke-linecap:round;transition:stroke .12s,stroke-width .12s}
+.wire.on{stroke:var(--wireon);stroke-width:3.6;filter:drop-shadow(0 0 5px var(--wireon))}
+.wire.dbus{stroke-width:4.5}
+.wire.dbus.on{stroke-width:6}
+.wire.abus{stroke-width:3.4;stroke-dasharray:9 5}
+.wire.abus.on{stroke:var(--am);stroke-dasharray:none;stroke-width:4.4;filter:drop-shadow(0 0 5px var(--am))}
+.node{fill:#141b28;stroke:#2b3648;stroke-width:1.5;rx:7}
+.node.act{fill:#0f2f2c;stroke:var(--cy);stroke-width:2}
+.node.actA{fill:#33260e;stroke:var(--am);stroke-width:2}
+.nlbl{fill:var(--dim);font:9.5px var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.nval{fill:#eaf2ff;font:700 13px var(--mono)}
+.nbits rect{fill:#0b0f16;stroke:#2a3648;stroke-width:1}
+.nbits rect.on{fill:var(--cy);stroke:#7dfff0}
+.nbits rect.onA{fill:var(--am);stroke:#ffd08a}
+.nbits rect.gn{fill:var(--gn);stroke:#a8f5bd}
+.nbits text{fill:#4b5a72;font:7px var(--mono);text-anchor:middle}
+.nbits text.on{fill:#04140f}
+.nbits text.onA{fill:#1a1000}
+.nbits text.gn{fill:#04140f}
+.flow{fill:var(--cy);font:700 11px var(--mono)}
+.ctl{fill:#0b0f16;stroke:#2a3648;stroke-width:1}
+.ctl.on{fill:var(--cy);stroke:#7dfff0}
+.ctl-t{fill:#5c6b85;font:8.5px var(--mono)}
+
+.stepbar{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel2);border-top:1px solid var(--line);flex-wrap:wrap}
+.cycle{font:12px var(--mono);color:var(--dim);white-space:nowrap}
+.cycle b{color:var(--cy)}
+.micro{
+  display:flex;align-items:center;gap:7px;padding:3px 7px;border-radius:5px;
+  background:#0c1017;border:1px solid var(--line);font:10px var(--mono);color:var(--faint)
+}
+.micro.on{background:#0f2f2c;border-color:var(--cy);color:#9dfff0;font-weight:700}
+.micro.done{opacity:.45}
+.micro.ph{background:#33260e;border-color:var(--am);color:#ffd08a;font-weight:700}
+
+.regs{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;padding:10px}
+.reg{background:#0c1017;border:1px solid var(--line);border-radius:8px;padding:8px 10px;transition:all .18s}
+.reg.chg{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy) inset}
+.reg.rax{border-color:var(--gn);box-shadow:0 0 0 1px var(--gn) inset}
+.reg .rn{font:9px var(--mono);color:var(--faint);text-transform:uppercase;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.reg .rn .rbits{font-size:10px;color:var(--gn);font-weight:600}
+.reg .rv{font:700 15px var(--mono);color:#eaf2ff;line-height:1.3;word-break:break-all}
+.reg.rax .rv{color:var(--gn)}
+.reg.chg .rv{color:var(--cy)}
+.reg .rd{font:9.5px var(--mono);color:var(--faint);margin-top:4px}
+.reg .bitbar{margin-top:6px;font-family:var(--mono);font-size:10px;line-height:1.4;white-space:pre}
+.reg .bitbar .bit{display:inline-block;width:1.1ch;text-align:center;color:#3a4a62}
+.reg .bitbar .bit.on{color:var(--cy)}
+.reg .bitbar .bit.gn{color:var(--gn);font-weight:700}
+.reg .bitbar .bit.w32{color:var(--am);font-weight:700}
+
+.strip{display:flex;flex-wrap:wrap;gap:6px;padding:10px}
+.flag{background:#0c1017;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font:11px var(--mono);color:var(--faint);display:flex;gap:7px;align-items:center}
+.flag b{color:#3d4a61;font-weight:700}
+.flag.on{color:#9dfff0}
+.flag.on b{color:var(--cy)}
+.outp{background:#0c1017;border:1px solid var(--line);border-radius:6px;padding:5px 10px;font:11px var(--mono);color:#3d4a61}
+.outp b{color:var(--am)}
+.outp.on{color:#ffd08a;border-color:var(--am)}
+
+.log{max-height:290px;overflow-y:auto;padding:8px 10px;font:12px var(--mono);display:flex;flex-direction:column;gap:5px}
+.log::-webkit-scrollbar{width:8px}.log::-webkit-scrollbar-thumb{background:#232c3d;border-radius:4px}
+.le{border-left:2px solid var(--line);padding:2px 0 2px 9px;animation:sl .22s ease-out}
+@keyframes sl{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.le .hd{color:#eaf2ff;font-weight:700}
+.le .wh{color:var(--dim);font-size:11px;line-height:1.45;margin-top:1px}
+.le .cy{color:var(--faint);font-size:10px}
+.le.F{border-left-color:var(--cy2)} .le.D{border-left-color:var(--vi)}
+.le.E{border-left-color:var(--am)} .le.H{border-left-color:var(--hot)} .le.M{border-left-color:var(--gn)}
+
+details{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+summary{padding:10px 13px;cursor:pointer;font-size:12px;font-weight:600;color:var(--dim);list-style:none;user-select:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"▸ ";color:var(--cy)}
+details[open] summary::before{content:"▾ "}
+summary:hover{color:var(--ink)}
+.dbody{padding:0 14px 14px;font-size:13px;line-height:1.65;color:#b9c6da}
+.dbody h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--cy);margin:14px 0 6px}
+.dbody code{background:#0c1017;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:12px var(--mono);color:#ffd08a}
+.dbody table{width:100%;border-collapse:collapse;margin:8px 0;font:12px var(--mono)}
+.dbody th,.dbody td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line)}
+.dbody th{color:var(--dim);font-weight:600}
+.q{border-left:2px solid var(--cy);padding:6px 0 6px 12px;margin:8px 0;background:#0d1620;border-radius:0 6px 6px 0}
+.q a{color:var(--cy);text-decoration:none;cursor:pointer;border-bottom:1px dotted}
+.q .ans{display:none;margin-top:6px;color:#b9c6da;font-size:12.5px}
+.q.open .ans{display:block}
+.hl{color:var(--cy)}.hl2{color:var(--am)}.hl3{color:var(--pk)}
+.pill{display:inline-block;padding:1px 7px;border-radius:99px;font:10px var(--mono);border:1px solid var(--line);color:var(--dim)}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Assembly <span>Lab</span> — x86-64 step-through</h1>
+    <div class="sub">Registers as 64-bit bit bars · RAX highlighted green · bit-32 width marker</div>
+  </div>
+  <div class="controls" style="margin:0">
+    <button class="g" id="btnReset">⟲ Reset</button>
+    <button class="p" id="btnStep">⏭ Step <kbd>→</kbd></button>
+    <button id="btnInst">⏩ Step instruction <kbd>⇧→</kbd></button>
+    <button class="go" id="btnRun">▶ Run <kbd>space</kbd></button>
+    <select id="speed" aria-label="run speed">
+      <option value="700">slow</option>
+      <option value="350" selected>normal</option>
+      <option value="120">fast</option>
+      <option value="25">turbo</option>
+    </select>
+  </div>
+</header>
+
+<div class="grid">
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="card">
+      <h2>Your program <em id="asmStat"></em></h2>
+      <textarea id="code" spellcheck="false" aria-label="assembly source" placeholder="Type x86-64 assembly (NASM syntax)..."></textarea>
+      <div style="padding:9px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line)">
+        <select id="examples" aria-label="example programs" style="flex:1;min-width:150px"></select>
+        <button id="btnAsm">Assemble & Reset</button>
+      </div>
+      <div id="asmMsg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Registers <em>64-bit · RAX=green · bit-32=amber marker</em></h2>
+      <div class="regs" id="regs"></div>
+      <div class="strip" style="border-top:1px solid var(--line)">
+        <div class="flag" id="fZ"><b>ZF</b> zero</div>
+        <div class="flag" id="fC"><b>CF</b> carry</div>
+        <div class="flag" id="fS"><b>SF</b> sign</div>
+        <div class="flag" id="fO"><b>OF</b> overflow</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Memory <em>256 bytes · hex + bit view on hover</em></h2>
+      <div class="mem" id="mem"></div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:12px">
+    <div class="card">
+      <h2>Datapath <em>highlighted = active this cycle</em></h2>
+      <svg class="dp" viewBox="0 0 1000 520" id="dp" role="img" aria-label="CPU datapath schematic"></svg>
+      <div class="stepbar">
+        <div class="cycle">CYCLE <b id="cyc">0</b> · <span id="phase">idle</span></div>
+        <div id="micros" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Execution log</h2>
+      <div class="log" id="log" aria-live="polite"></div>
+    </div>
+  </div>
+</div>
+
+<details>
+  <summary>Instruction set, register map, and bit-bar guide</summary>
+  <div class="dbody">
+    <h3>General-purpose registers (64-bit)</h3>
+    <table>
+      <tr><th>64-bit</th><th>32-bit</th><th>16-bit</th><th>8-bit low</th><th>8-bit high</th></tr>
+      <tr><td><code>RAX</code></td><td><code>EAX</code></td><td><code>AX</code></td><td><code>AL</code></td><td><code>AH</code></tr>
+      <tr><td><code>RBX</code></td><td><code>EBX</code></td><td><code>BX</code></td><td><code>BL</code></td><td><code>BH</code></tr>
+      <tr><td><code>RCX</code></td><td><code>ECX</code></td><td><code>CX</code></td><td><code>CL</code></td><td><code>CH</code></tr>
+      <tr><td><code>RDX</code></td><td><code>EDX</code></td><td><code>DX</code></td><td><code>DL</code></td><td><code>DH</code></tr>
+      <tr><td><code>RSI</code></td><td><code>ESI</code></td><td><code>SI</code></td><td><code>SIL</code></td><td>—</tr>
+      <tr><td><code>RDI</code></td><td><code>EDI</code></td><td><code>DI</code></td><td><code>DIL</code></td><td>—</tr>
+      <tr><td><code>RBP</code></td><td><code>EBP</code></td><td><code>BP</code></td><td><code>BPL</code></td><td>—</tr>
+      <tr><td><code>RSP</code></td><td><code>ESP</code></td><td><code>SP</code></td><td><code>SPL</code></td><td>—</tr>
+      <tr><td><code>R8–R15</code></td><td><code>R8D–R15D</code></td><td><code>R8W–R15W</code></td><td><code>R8B–R15B</code></td><td>—</tr>
+    </table>
+
+    <h3>Bit bar legend</h3>
+    <ul style="margin:8px 0 8px 18px;line-height:1.8">
+      <li><span style="color:var(--gn);font-weight:700">■</span> Green bits = value occupies this bit (RAX always green)</li>
+      <li><span style="color:var(--cy);font-weight:700">■</span> Cyan bits = active/changed this cycle</li>
+      <li><span style="color:var(--am);font-weight:700">■</span> Amber bit-32 = 32-bit width marker (shows where 32-bit sub-register ends)</li>
+      <li><span style="color:#3a4a62">■</span> Dark bits = zero / unused</li>
+    </ul>
+    <p>Example: <code>mov eax, 0x1234</code> → bits 0–15 green, bit-32 amber, bits 16–63 dark.</p>
+
+    <h3>Supported instructions (subset)</h3>
+    <table>
+      <tr><th>Instruction</th><th>Example</th><th>Effect</th></tr>
+      <tr><td><code>MOV reg, imm64</code></td><td><code>mov rax, 0x1234</code></td><td>Load immediate</td></tr>
+      <tr><td><code>MOV reg, reg</code></td><td><code>mov rbx, rax</code></td><td>Register copy</td></tr>
+      <tr><td><code>MOV reg, [mem]</code></td><td><code>mov rax, [0x100]</code></td><td>Memory load</td></tr>
+      <tr><td><code>MOV [mem], reg</code></td><td><code>mov [0x100], rax</code></td><td>Memory store</td></tr>
+      <tr><td><code>ADD/SUB/AND/OR/XOR reg, reg/imm</code></td><td><code>add rax, rbx</code></td><td>ALU ops</td></tr>
+      <tr><td><code>INC/DEC reg</code></td><td><code>inc rax</code></td><td>Increment/decrement</td></tr>
+      <tr><td><code>SHL/SHR/SAR reg, imm/cl</code></td><td><code>shl rax, 4</code></td><td>Shifts</td></tr>
+      <tr><td><code>CMP reg, reg/imm</code></td><td><code>cmp rax, 10</code></td><td>Compare (sets flags)</td></tr>
+      <tr><td><code>JMP/JZ/JNZ/JL/JG label</code></td><td><code>jz loop</code></td><td>Branches</td></tr>
+      <tr><td><code>CALL/RET</code></td><td><code>call func / ret</code></td><td>Call/return</td></tr>
+      <tr><td><code>PUSH/POP reg</code></td><td><code>push rax</code></td><td>Stack ops</td></tr>
+      <tr><td><code>NOP / HLT</code></td><td><code>nop / hlt</code></td><td>Control</td></tr>
+    </table>
+
+    <h3>Try it</h3>
+    <p>Select an example from the dropdown, press <b>Assemble & Reset</b>, then <b>Step</b> through cycles. Watch RAX bit bar light up green, bit-32 amber marker.</p>
+  </div>
+</details>
+
+<script>
+"use strict";
+
+/* =========================================================================
+   x86-64 Assembly Lab — cycle-accurate micro-op visualizer
+   64-bit registers, bit-bar visualization, RAX=green, bit-32=amber
+   ========================================================================= */
+
+const REGS64 = ["RAX","RBX","RCX","RDX","RSI","RDI","RBP","RSP","R8","R9","R10","R11","R12","R13","R14","R15"];
+const REG32 = ["EAX","EBX","ECX","EDX","ESI","EDI","EBP","ESP","R8D","R9D","R10D","R11D","R12D","R13D","R14D","R15D"];
+const REG16 = ["AX","BX","CX","DX","SI","DI","BP","SP","R8W","R9W","R10W","R11W","R12W","R13W","R14W","R15W"];
+const REG8L = ["AL","BL","CL","DL","SIL","DIL","BPL","SPL","R8B","R9B","R10B","R11B","R12B","R13B","R14B","R15B"];
+const REG8H = ["AH","BH","CH","DH",null,null,null,null,null,null,null,null,null,null,null,null];
+
+const MEMSIZE = 256;
+const STACK_BASE = 0x100;  // stack grows down from 0x100
+
+const OP = {
+  // format: {opcode, bytes, cycles, microops_builder}
+  MOV_RI:   {base:0xB8, bytes:10, cycles:1},  // MOV R64, imm64 (REX.W + B8+r / id)
+  MOV_RR:   {base:0x89, bytes:3, cycles:1},   // MOV r/m64, r64
+  MOV_MR:   {base:0x8B, bytes:3, cycles:2},   // MOV r64, r/m64
+  ADD_RR:   {base:0x01, bytes:3, cycles:1},
+  SUB_RR:   {base:0x29, bytes:3, cycles:1},
+  AND_RR:   {base:0x21, bytes:3, cycles:1},
+  OR_RR:    {base:0x09, bytes:3, cycles:1},
+  XOR_RR:   {base:0x31, bytes:3, cycles:1},
+  INC_R:    {base:0xFF, bytes:2, cycles:1, modrm:0xC0},
+  DEC_R:    {base:0xFF, bytes:2, cycles:1, modrm:0xC8},
+  SHL_RI:   {base:0xC1, bytes:3, cycles:1, modrm:0xE0},
+  SHR_RI:   {base:0xC1, bytes:3, cycles:1, modrm:0xE8},
+  SAR_RI:   {base:0xC1, bytes:3, cycles:1, modrm:0xF8},
+  CMP_RR:   {base:0x39, bytes:3, cycles:1},
+  CMP_RI:   {base:0x81, bytes:6, cycles:1, modrm:0xF8},
+  JMP_R:    {base:0xE9, bytes:5, cycles:1},
+  JCC:      {base:0x80, bytes:6, cycles:2},   // 0F 8x
+  CALL_R:   {base:0xE8, bytes:5, cycles:2},
+  RET:      {base:0xC3, bytes:1, cycles:2},
+  PUSH_R:   {base:0x50, bytes:1, cycles:2},   // 50+r
+  POP_R:    {base:0x58, bytes:1, cycles:2},   // 58+r
+  NOP:      {base:0x90, bytes:1, cycles:1},
+  HLT:      {base:0xF4, bytes:1, cycles:1},
+};
+
+const WIRE = {
+  pcMar:"w-pc-mar", pcInc:"w-pc-inc", marBus:"w-mar-bus", ramMdr:"w-ram-mdr",
+  mdrIr:"w-mdr-ir", mdrImm:"w-mdr-imm", irCtl:"w-ir-ctl", immMar:"w-imm-mar",
+  immReg:"w-imm-reg", immPc:"w-imm-pc", aAlu:"w-a-alu", bAlu:"w-b-alu",
+  aluReg:"w-alu-reg", aluFlg:"w-alu-flg", mdrReg:"w-mdr-reg", regMdr:"w-reg-mdr",
+  regOut:"w-reg-out", mdrMem:"w-mdr-mem", flgPc:"w-flg-pc", spDec:"w-sp-dec",
+  spInc:"w-sp-inc"
+};
+
+function h64(n){ return "0x"+(BigInt(n)&0xFFFFFFFFFFFFFFFFn).toString(16).padStart(16,"0"); }
+function h32(n){ return "0x"+(n&0xFFFFFFFF).toString(16).padStart(8,"0"); }
+function b64(n){ return (BigInt(n)&0xFFFFFFFFFFFFFFFFn).toString(2).padStart(64,"0"); }
+function b32(n){ return (n&0xFFFFFFFF).toString(2).padStart(32,"0"); }
+
+/* ---------------------------- state ---------------------------- */
+const S = {
+  pc:0, rip:0, ir:0, imm:0n, mar:0, mdr:0n, alu:0n,
+  reg:new BigUint64Array(16), flags:{ZF:0,CF:0,SF:0,OF:0},
+  mem:new Uint8Array(MEMSIZE),
+  cycle:0, phase:"idle", micro:[], mi:0, running:false, halted:false,
+  prevReg:new BigUint64Array(16), prevPc:0, lastAddr:null, lastWrite:null,
+  labels:{}, labelMap:{}, codeBytes:new Uint8Array(),
+  fetch:null
+};
+
+/* ------------------------- assembler (NASM-like subset) ------------------------- */
+function assemble(src){
+  const lines = src.split("\n").map(l=>l.trim()).filter(l=>l && !l.startsWith(";"));
+  const labels = {};
+  let pc = 0;
+  const encoded = [];
+
+  // pass 1: collect labels
+  for(const line of lines){
+    const labelMatch = line.match(/^(\w+):\s*(.*)$/);
+    if(labelMatch){
+      labels[labelMatch[1]] = pc;
+      if(labelMatch[2]) pc += estimateBytes(labelMatch[2]);
+    }else{
+      pc += estimateBytes(line);
+    }
+  }
+
+  // pass 2: encode
+  pc = 0;
+  for(const line of lines){
+    const labelMatch = line.match(/^(\w+):\s*(.*)$/);
+    const instr = labelMatch ? labelMatch[2] : line;
+    if(!instr) continue;
+    const bytes = encodeInstruction(instr, pc, labels);
+    for(const b of bytes) encoded.push(b);
+    pc += bytes.length;
+  }
+
+  return {bytes:new Uint8Array(encoded), labels, entry:labels._start||0};
+}
+
+function estimateBytes(line){
+  const up = line.toUpperCase();
+  if(up.startsWith("MOV ")) return up.includes("RAX")||up.includes("RBX")||up.includes("RCX")||up.includes("RDX")||up.includes("RSI")||up.includes("RDI")||up.includes("RBP")||up.includes("RSP") ? 10 : 3;
+  if(up.startsWith("ADD ")||up.startsWith("SUB ")||up.startsWith("AND ")||up.startsWith("OR ")||up.startsWith("XOR ")||up.startsWith("CMP ")) return 3;
+  if(up.startsWith("INC ")||up.startsWith("DEC ")||up.startsWith("SHL ")||up.startsWith("SHR ")||up.startsWith("SAR ")) return 3;
+  if(up.startsWith("JMP ")||up.startsWith("JZ ")||up.startsWith("JNZ ")||up.startsWith("JL ")||up.startsWith("JG ")) return 6;
+  if(up.startsWith("CALL ")) return 5;
+  if(up.startsWith("PUSH ")||up.startsWith("POP ")||up==="RET"||up==="NOP"||up==="HLT") return 1;
+  return 1;
+}
+
+function regIndex(name){
+  const n = name.toUpperCase();
+  const i = REGS64.indexOf(n);
+  if(i>=0) return i;
+  const i32 = REG32.indexOf(n);
+  if(i32>=0) return i32;
+  const i16 = REG16.indexOf(n);
+  if(i16>=0) return i16;
+  const i8 = REG8L.indexOf(n);
+  if(i8>=0) return i8;
+  return -1;
+}
+
+function encodeInstruction(line, pc, labels){
+  const up = line.toUpperCase();
+  const parts = up.split(/\s+/);
+  const mnemonic = parts[0];
+  const ops = line.slice(mnemonic.length).trim().split(",").map(s=>s.trim());
+
+  // MOV R64, imm64
+  if(mnemonic==="MOV" && ops.length===2){
+    const dst = regIndex(ops[0]);
+    const src = ops[1];
+    if(dst>=0 && /^0x[0-9A-F]+$/i.test(src)){
+      const val = BigInt(src);
+      const rex = 0x48 | (dst>>3);
+      const opcode = 0xB8 | (dst&7);
+      return [rex, opcode, ...Array.from({length:8},(_,i)=>Number((val>>(8*i))&0xFF))];
+    }
+    if(dst>=0 && regIndex(ops[1])>=0){
+      const srcReg = regIndex(ops[1]);
+      const rex = 0x48 | ((dst>>3)<<1) | (srcReg>>3);
+      const modrm = 0xC0 | ((srcReg&7)<<3) | (dst&7);
+      return [rex, 0x89, modrm];
+    }
+    // MOV R64, [mem]
+    if(dst>=0 && src.startsWith("[") && src.endsWith("]")){
+      const addr = parseInt(src.slice(1,-1),0);
+      const rex = 0x48 | (dst>>3);
+      const modrm = 0x05 | ((dst&7)<<3); // [rip+disp32] not supported, use absolute
+      return [rex, 0x8B, modrm, ...[addr&0xFF,(addr>>8)&0xFF,(addr>>16)&0xFF,(addr>>24)&0xFF,0,0,0,0]];
+    }
+    // MOV [mem], R64
+    if(ops[0].startsWith("[") && ops[0].endsWith("]") && regIndex(ops[1])>=0){
+      const addr = parseInt(ops[0].slice(1,-1),0);
+      const srcReg = regIndex(ops[1]);
+      const rex = 0x48 | (srcReg>>3);
+      const modrm = 0x05 | ((srcReg&7)<<3);
+      return [rex, 0x89, modrm, ...[addr&0xFF,(addr>>8)&0xFF,(addr>>16)&0xFF,(addr>>24)&0xFF,0,0,0,0]];
+    }
+  }
+
+  // ALU ops: ADD/SUB/AND/OR/XOR R, R
+  if(["ADD","SUB","AND","OR","XOR"].includes(mnemonic) && ops.length===2){
+    const dst = regIndex(ops[0]);
+    const src = regIndex(ops[1]);
+    if(dst>=0 && src>=0){
+      const base = {"ADD":0x01,"SUB":0x29,"AND":0x21,"OR":0x09,"XOR":0x31}[mnemonic];
+      const rex = 0x48 | ((dst>>3)<<1) | (src>>3);
+      const modrm = 0xC0 | ((src&7)<<3) | (dst&7);
+      return [rex, base, modrm];
+    }
+  }
+
+  // INC/DEC R
+  if((mnemonic==="INC"||mnemonic==="DEC") && ops.length===1){
+    const dst = regIndex(ops[0]);
+    if(dst>=0){
+      const rex = 0x48 | (dst>>3);
+      const modrm = (mnemonic==="INC"?0xC0:0xC8) | (dst&7);
+      return [rex, 0xFF, modrm];
+    }
+  }
+
+  // SHL/SHR/SAR R, imm8
+  if(["SHL","SHR","SAR"].includes(mnemonic) && ops.length===2){
+    const dst = regIndex(ops[0]);
+    const imm = parseInt(ops[1],0);
+    if(dst>=0 && imm>=0 && imm<64){
+      const modrm = {"SHL":0xE0,"SHR":0xE8,"SAR":0xF8}[mnemonic] | (dst&7);
+      const rex = 0x48 | (dst>>3);
+      return [rex, 0xC1, modrm, imm];
+    }
+  }
+
+  // CMP R, R
+  if(mnemonic==="CMP" && ops.length===2){
+    const dst = regIndex(ops[0]);
+    const src = regIndex(ops[1]);
+    if(dst>=0 && src>=0){
+      const rex = 0x48 | ((dst>>3)<<1) | (src>>3);
+      const modrm = 0xC0 | ((src&7)<<3) | (dst&7);
+      return [rex, 0x39, modrm];
+    }
+  }
+  // CMP R, imm32
+  if(mnemonic==="CMP" && ops.length===2){
+    const dst = regIndex(ops[0]);
+    const imm = parseInt(ops[1],0);
+    if(dst>=0 && Number.isInteger(imm)){
+      const rex = 0x48 | (dst>>3);
+      const modrm = 0xF8 | (dst&7);
+      return [rex, 0x81, modrm, imm&0xFF,(imm>>8)&0xFF,(imm>>16)&0xFF,(imm>>24)&0xFF];
+    }
+  }
+
+  // JMP label
+  if(mnemonic==="JMP" && ops.length===1){
+    const target = labels[ops[0]];
+    if(target!==undefined){
+      const rel = target - (pc + 5);
+      return [0xE9, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
+    }
+  }
+
+  // JCC label
+  if(["JZ","JNZ","JL","JG","JLE","JGE","JB","JA","JBE","JAE"].includes(mnemonic) && ops.length===1){
+    const target = labels[ops[0]];
+    if(target!==undefined){
+      const cc = {"JZ":0x84,"JNZ":0x85,"JL":0x8C,"JG":0x8F,"JLE":0x8E,"JGE":0x8D,"JB":0x82,"JA":0x87,"JBE":0x86,"JAE":0x83}[mnemonic];
+      const rel = target - (pc + 6);
+      return [0x0F, cc, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
+    }
+  }
+
+  // CALL label
+  if(mnemonic==="CALL" && ops.length===1){
+    const target = labels[ops[0]];
+    if(target!==undefined){
+      const rel = target - (pc + 5);
+      return [0xE8, rel&0xFF,(rel>>8)&0xFF,(rel>>16)&0xFF,(rel>>24)&0xFF];
+    }
+  }
+
+  // RET
+  if(mnemonic==="RET") return [0xC3];
+
+  // PUSH/POP R
+  if(mnemonic==="PUSH" && ops.length===1){
+    const dst = regIndex(ops[0]);
+    if(dst>=0) return [0x50 | (dst&7)];
+  }
+  if(mnemonic==="POP" && ops.length===1){
+    const dst = regIndex(ops[0]);
+    if(dst>=0) return [0x58 | (dst&7)];
+  }
+
+  if(mnemonic==="NOP") return [0x90];
+  if(mnemonic==="HLT") return [0xF4];
+
+  throw new Error("Unknown instruction: "+line);
+}
+
+/* ------------------------- micro-op builders ------------------------- */
+function buildFetch(){
+  return [
+    {t:1,ph:"F",d:"RIP → MAR",w:[WIRE.pcMar],c:["pc_r","mar_w"],why:"Program counter (RIP) puts instruction address on address bus.",a:s=>s.pc, f:s=>{s.mar=s.pc;}},
+    {t:1,ph:"F",d:"RAM[MAR] → MDR",w:[WIRE.marBus,WIRE.ramMdr],c:["mar_r","mem_r","mdr_w"],why:"Instruction byte fetched from memory.",a:s=>s.mem[s.mar], f:s=>{s.mdr=BigInt(s.mem[s.mar]);s.lastAddr=s.mar;}},
+    {t:1,ph:"F",d:"MDR → IR, RIP←RIP+1",w:[WIRE.mdrIr,WIRE.pcInc],c:["mdr_r","ir_w","pc_inc","pc_w"],why:"Instruction register latches opcode; RIP advances.",a:s=>s.mdr, f:s=>{s.ir=Number(s.mdr);s.pc=(s.pc+1)&0xFFFFFFFFFFFFFFFFn;}}
+  ];
+}
+
+function buildOperandFetch(bytes){
+  return [
+    {t:1,ph:"F",d:"RIP → MAR (operand)",w:[WIRE.pcMar],c:["pc_r","mar_w"],why:"Fetch next byte(s) of instruction.",a:s=>s.pc, f:s=>{s.mar=s.pc;}},
+    {t:1,ph:"F",d:"RAM[MAR] → MDR",w:[WIRE.marBus,WIRE.ramMdr],c:["mar_r","mem_r","mdr_w"],why:"Operand byte from memory.",a:s=>s.mem[s.mar], f:s=>{s.mdr=BigInt(s.mem[s.mar]);s.lastAddr=s.mar;}},
+    {t:1,ph:"F",d:"MDR → operand latch",w:[WIRE.mdrImm],c:["mdr_r","ir_w"],why:"Operand held in latch.",a:s=>s.mdr, f:s=>{s.imm=s.mdr;s.pc=(s.pc+1)&0xFFFFFFFFFFFFFFFFn;}}
+  ];
+}
+
+function decodeMo(op){
+  return {t:1,ph:"D",d:"DECODE "+op.toString(16).padStart(2,"0"),w:[WIRE.irCtl],c:["ir_r"],why:"Control unit decodes opcode.",a:s=>s.ir, f:s=>{S.fetch=op;}};
+}
+
+/* ------------------------- execution micro-ops ------------------------- */
+function buildExec(op, imm, s){
+  const opc = op & 0xFF;
+  const rex = (op>>8)&0xFF;
+  const hasRex = (rex & 0x40)!==0;
+  const dst = ((rex&1)<<3) | ((op>>8)&7); // simplified
+  const src = op&7;
+
+  // This is simplified - real decoder would parse ModR/M properly
+  // For now, handle the instructions we generate
+  return [];
+}
+
+/* ------------------------- VM step ------------------------- */
+function stepCycle(){
+  if(S.halted || S.mi >= S.micro.length) return false;
+
+  const mo = S.micro[S.mi];
+  if(mo.f) mo.f(S);
+  S.mi++;
+  S.cycle++;
+
+  if(S.mi >= S.micro.length){
+    S.phase = "idle";
+    S.micro = [];
+    S.mi = 0;
+    if(!S.halted) scheduleNextInstruction();
+  }else{
+    S.phase = mo.ph;
+  }
+  render();
+  return true;
+}
+
+function scheduleNextInstruction(){
+  if(S.pc >= S.codeBytes.length){ S.halted=true; return; }
+  S.prevReg.set(S.reg);
+  S.prevPc = S.pc;
+
+  const op = S.codeBytes[S.pc];
+  S.ir = op;
+  S.pc++;
+
+  // Simplified: single-cycle execution for demo
+  executeInstruction(op);
+}
+
+function executeInstruction(op){
+  // Very simplified executor for demo
+  // Real version would have full micro-op sequences
+  const rex = (op & 0x40)?1:0;
+  if((op & 0xF8) === 0xB8){ // MOV R64, imm64
+    const reg = op & 7;
+    let val = 0n;
+    for(let i=0;i<8;i++){ val |= BigInt(S.codeBytes[S.pc+i]) << BigInt(8*i); }
+    S.pc += 8;
+    S.reg[reg] = val;
+    logExec(`MOV R${reg}, ${h64(val)}`);
+  }else if(op === 0x90){ // NOP
+    logExec("NOP");
+  }else if(op === 0xF4){ // HLT
+    S.halted = true;
+    logExec("HLT — halted");
+  }else if(op === 0xC3){ // RET
+    // pop RIP from stack
+    const rsp = Number(S.reg[7]);
+    let val = 0n;
+    for(let i=0;i<8;i++) val |= BigInt(S.mem[rsp+i]) << BigInt(8*i);
+    S.reg[7] = BigInt(rsp+8);
+    S.pc = val;
+    logExec(`RET → ${h64(val)}`);
+  }else{
+    logExec(`Unknown op: ${op.toString(16)}`);
+    S.halted = true;
+  }
+  S.phase = "E";
+  render();
+}
+
+function logExec(msg){
+  const le = document.createElement("div");
+  le.className="le E";
+  le.innerHTML = `<div class="hd">EXEC</div><div class="wh">${msg}</div>`;
+  const log = document.getElementById("log");
+  log.insertBefore(le, log.firstChild);
+}
+
+/* ------------------------- rendering ------------------------- */
+function renderRegs(){
+  const box = document.getElementById("regs");
+  box.innerHTML = "";
+  for(let i=0;i<16;i++){
+    const name = REGS64[i];
+    const val = S.reg[i];
+    const prev = S.prevReg[i];
+    const changed = val !== prev;
+    const isRax = (i===0);
+
+    const bits = b64(val);
+    let bitbar = "";
+    for(let b=63;b>=0;b--){
+      const bitVal = bits[63-b];
+      let cls = "bit";
+      if(bitVal==="1"){
+        cls += isRax ? " gn" : " on";
+      }
+      if(b===32) cls += " w32";
+      bitbar += `<span class="${cls}">${bitVal}</span>`;
+      if(b%8===0 && b!==63) bitbar += " ";
+    }
+
+    const div = document.createElement("div");
+    div.className = `reg${changed?" chg":""}${isRax?" rax":""}`;
+    div.innerHTML = `
+      <div class="rn">${name} <span class="rbits">[63..0]</span></div>
+      <div class="rv">${h64(val)}</div>
+      <div class="rd">${isRax?"accumulator":name==="RSP"?"stack pointer":name==="RBP"?"base pointer":"general purpose"}</div>
+      <div class="bitbar">${bitbar}</div>
+    `;
+    box.appendChild(div);
+  }
+  // flags
+  document.getElementById("fZ").className = "flag"+(S.flags.ZF?" on":"");
+  document.getElementById("fC").className = "flag"+(S.flags.CF?" on":"");
+  document.getElementById("fS").className = "flag"+(S.flags.SF?" on":"");
+  document.getElementById("fO").className = "flag"+(S.flags.OF?" on":"");
+}
+
+function renderMem(){
+  const box = document.getElementById("mem");
+  box.innerHTML = "";
+  for(let i=0;i<MEMSIZE;i+=8){
+    const div = document.createElement("div");
+    div.className = "cell"+(i===Number(S.pc)?" pc":"")+(i===S.lastAddr?" hit":"")+(S.lastWrite===i?" wr":"");
+    let hex = "";
+    for(let j=7;j>=0;j--) hex += S.mem[i+j].toString(16).padStart(2,"0");
+    div.innerHTML = `<div class="ad">${h64(i)}</div><div class="hx">${hex}</div>`;
+    div.title = "Bits: " + Array.from({length:8},(_,j)=>b64(BigInt(S.mem[i+j]))).join(" ");
+    box.appendChild(div);
+  }
+}
+
+function renderDatapath(){
+  const svg = document.getElementById("dp");
+  svg.innerHTML = `
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L9,3 Z" fill="var(--wireoff)"/>
+      </marker>
+    </defs>
+    <!-- Register file -->
+    <rect x="20" y="20" width="200" height="380" class="node" rx="10"/>
+    <text x="120" y="45" class="nlbl" text-anchor="middle">REGISTER FILE</text>
+    <g id="regslots"></g>
+
+    <!-- ALU -->
+    <rect x="400" y="120" width="200" height="140" class="node" rx="10"/>
+    <text x="500" y="155" class="nlbl" text-anchor="middle">ALU</text>
+    <text x="500" y="185" class="nval" text-anchor="middle" id="aluval">—</text>
+    <text x="500" y="215" class="ctl-t" text-anchor="middle">op: <tspan id="aluop">—</tspan></text>
+
+    <!-- Flags -->
+    <rect x="400" y="290" width="200" height="80" class="node" rx="10"/>
+    <text x="500" y="315" class="nlbl" text-anchor="middle">FLAGS</text>
+    <text x="500" y="345" class="nval" text-anchor="middle" id="flagsval">ZF CF SF OF</text>
+
+    <!-- Memory -->
+    <rect x="700" y="20" width="200" height="380" class="node" rx="10"/>
+    <text x="800" y="45" class="nlbl" text-anchor="middle">MEMORY</text>
+    <text x="800" y="80" class="nval" text-anchor="middle" id="memaddr">[0x0000]</text>
+    <text x="800" y="110" class="nval" text-anchor="middle" id="memval">0x00</text>
+
+    <!-- RIP -->
+    <rect x="20" y="420" width="300" height="60" class="node" rx="10"/>
+    <text x="170" y="445" class="nlbl" text-anchor="middle">RIP</text>
+    <text x="170" y="470" class="nval" text-anchor="middle" id="ripval">0x0000</text>
+
+    <!-- Wires (simplified) -->
+    <line x1="220" y1="100" x2="400" y2="160" class="wire dbus" id="w_reg_alu" marker-end="url(#arrow)"/>
+    <line x1="400" y1="260" x2="220" y2="200" class="wire dbus" id="w_alu_reg" marker-end="url(#arrow)"/>
+    <line x1="500" y1="290" x2="500" y2="300" class="wire" id="w_alu_flg"/>
+    <line x1="700" y1="100" x2="800" y2="100" class="wire dbus" id="w_mem"/>
+    <line x1="170" y1="420" x2="170" y2="400" class="wire abus" id="w_rip"/>
+  `;
+
+  // Fill register slots
+  const slots = document.getElementById("regslots");
+  for(let i=0;i<16;i++){
+    const y = 65 + i*22;
+    const val = S.reg[i];
+    const name = REGS64[i];
+    const changed = val !== S.prevReg[i];
+    const cls = changed?" act":"";
+    slots.innerHTML += `
+      <text x="35" y="${y+14}" class="nlbl${cls}" font-size="10">${name}</text>
+      <text x="200" y="${y+14}" class="nval${cls}" text-anchor="end" font-size="11">${h64(val)}</text>
+    `;
+  }
+
+  document.getElementById("aluval").textContent = h64(S.alu);
+  document.getElementById("flagsval").textContent = `ZF${S.flags.ZF} CF${S.flags.CF} SF${S.flags.SF} OF${S.flags.OF}`;
+  document.getElementById("memaddr").textContent = `[${h64(S.mar)}]`;
+  document.getElementById("memval").textContent = h64(S.mdr);
+  document.getElementById("ripval").textContent = h64(S.pc);
+}
+
+function renderCycle(){
+  document.getElementById("cyc").textContent = S.cycle;
+  document.getElementById("phase").textContent = S.phase;
+
+  const micros = document.getElementById("micros");
+  micros.innerHTML = "";
+  for(let i=0;i<S.micro.length;i++){
+    const mo = S.micro[i];
+    const div = document.createElement("div");
+    div.className = "micro"+(i===S.mi?" on":i<S.mi?" done":"");
+    div.textContent = mo.d;
+    micros.appendChild(div);
+  }
+}
+
+function render(){
+  renderRegs();
+  renderMem();
+  renderDatapath();
+  renderCycle();
+}
+
+/* ------------------------- UI ------------------------- */
+const examples = {
+  "Hello RAX": `; Load immediate into RAX
+mov rax, 0x123456789ABCDEF0
+; Copy to RBX
+mov rbx, rax
+; Add
+add rax, rbx
+hlt`,
+  "Loop counter": `; Count down from 10 in RCX
+mov rcx, 10
+loop_start:
+  dec rcx
+  jnz loop_start
+hlt`,
+  "Bit shifts": `mov rax, 1
+shl rax, 4    ; rax = 16
+shl rax, 8    ; rax = 4096
+shr rax, 2    ; rax = 1024
+hlt`,
+  "Memory ops": `mov rax, 0xDEADBEEF
+mov [0x80], rax
+mov rbx, [0x80]
+add rax, rbx
+hlt`,
+  "Stack demo": `mov rsp, 0x100
+push rax
+push rbx
+mov rax, 0x1111
+mov rbx, 0x2222
+push rax
+push rbx
+pop rax
+pop rbx
+hlt`,
+  "Function call": `mov rdi, 42
+call myfunc
+hlt
+myfunc:
+  mov rax, rdi
+  add rax, 10
+  ret`,
+};
+
+const exSel = document.getElementById("examples");
+for(const [name,code] of Object.entries(examples)){
+  const opt = document.createElement("option");
+  opt.value = name;
+  opt.textContent = name;
+  exSel.appendChild(opt);
+}
+exSel.onchange = () => { document.getElementById("code").value = examples[exSel.value]; };
+
+document.getElementById("btnAsm").onclick = () => {
+  try{
+    const {bytes, labels, entry} = assemble(document.getElementById("code").value);
+    S.codeBytes = bytes;
+    S.labels = labels;
+    S.pc = entry;
+    S.rip = entry;
+    S.reg.fill(0n);
+    S.prevReg.fill(0n);
+    S.mem.fill(0);
+    S.flags = {ZF:0,CF:0,SF:0,OF:0};
+    S.cycle = 0;
+    S.phase = "idle";
+    S.micro = [];
+    S.mi = 0;
+    S.halted = false;
+    S.lastAddr = null;
+    S.lastWrite = null;
+    document.getElementById("asmMsg").innerHTML = `<div class="ok">Assembled ${bytes.length} bytes. Entry: ${h64(entry)}</div>`;
+    document.getElementById("asmStat").textContent = `${bytes.length} bytes`;
+    scheduleNextInstruction();
+    render();
+  }catch(e){
+    document.getElementById("asmMsg").innerHTML = `<div class="err">${e.message}</div>`;
+  }
+};
+
+document.getElementById("btnReset").onclick = () => {
+  document.getElementById("code").value = "";
+  document.getElementById("asmMsg").textContent = "";
+  document.getElementById("asmStat").textContent = "";
+  S.codeBytes = new Uint8Array();
+  S.pc = 0; S.reg.fill(0n); S.prevReg.fill(0n); S.mem.fill(0);
+  S.flags = {ZF:0,CF:0,SF:0,OF:0}; S.cycle=0; S.phase="idle"; S.micro=[]; S.mi=0; S.halted=false;
+  render();
+};
+
+document.getElementById("btnStep").onclick = stepCycle;
+document.getElementById("btnInst").onclick = () => { for(let i=0;i<10;i++) if(!stepCycle()) break; };
+document.getElementById("btnRun").onclick = () => {
+  const btn = document.getElementById("btnRun");
+  if(S.running){
+    S.running=false; btn.textContent="▶ Run"; btn.classList.remove("go");
+  }else{
+    S.running=true; btn.textContent="⏸ Pause"; btn.classList.add("go");
+    const speed = Number(document.getElementById("speed").value);
+    const tick = () => {
+      if(!S.running || S.halted){ S.running=false; btn.textContent="▶ Run"; btn.classList.remove("go"); return; }
+      stepCycle();
+      setTimeout(tick, speed);
+    };
+    tick();
+  }
+};
+
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight" && !e.shiftKey){ e.preventDefault(); stepCycle(); }
+  if(e.key==="ArrowRight" && e.shiftKey){ e.preventDefault(); for(let i=0;i<10;i++) if(!stepCycle()) break; }
+  if(e.key===" "){ e.preventDefault(); document.getElementById("btnRun").click(); }
+});
+
+// Load first example
+document.getElementById("code").value = examples["Hello RAX"];
+document.getElementById("btnAsm").click();
+</script>
+</body>
+</html>

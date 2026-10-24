@@ -1,0 +1,4 @@
+# Assembly Lab - no build artifacts, single HTML file
+.DS_Store
+*.swp
+*~
